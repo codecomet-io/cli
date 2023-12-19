@@ -14,7 +14,7 @@ import (
 
 	traceconsumerv1 "github.com/codecomet-io/api-proto/gen/proto/v1"
 	"github.com/codecomet-io/api-proto/gen/proto/v1/traceconsumerv1connect"
-	"github.com/codecomet-io/codecomet-cli/pkg/testobs"
+	"github.com/codecomet-io/cli/pkg/testobs"
 )
 
 func shiftSlice(s []string, pos int, val string) []string {
