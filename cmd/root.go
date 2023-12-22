@@ -45,7 +45,7 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 	Run: func(cmd *cobra.Command, args []string) {
 		remoteServer := viper.GetString("REMOTE_SERVER")
 		if remoteServer == "" {
-			remoteServer = "https://codecomet.io/api"
+			remoteServer = "https://app.codecomet.io/api"
 		}
 		client := traceconsumerv1connect.NewTraceServiceClient(
 			http.DefaultClient,
