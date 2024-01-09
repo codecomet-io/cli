@@ -15,7 +15,7 @@ We support Github Actions and CircleCI currently. We will add support for other 
 
 ### How to use CLI
 
-To use, simply prefix your "go test" or "pytest" or other test commands with `codecomet`
+To use, simply prefix your "go test" or "pytest" or other test commands with `codecomet`. You will also want to use `--` to separate the arguments as in the examples below.
 
 You can pass flags to the codecomet executable, such as the suite name (it will default to your folder name) or the suite run ID (which will default to the run ID in your CI system).
 
@@ -36,6 +36,13 @@ codecomet -r LOC2 -- go test $(go list ./... | grep -v wasm)
 ```
 
 The above will run all tests in the provided packages except for a package named "wasm". The run ID used is `LOC2`. No suite name is provided here, so one will be automatically created from the base directory. You may want to provide a suite name to make it clear which groups of tests should be grouped together as a "suite". In the above example, the base directory that this command is being run in is the same for all tests, so they will all share a suite name and suite run ID.
+
+#### Python
+
+If you are using Python, we are only currently compatible with `pytest`. You must also install the pytest plugin `pytest-reportlog`. You can typically just do this with `pip`. `pytest` on its own does not contain enough timing and other information otherwise.
+
+If you are using Django, you can install the library `pytest-django` and run your tests with `pytest` that way. You typically just need to export a `DJANGO_SETTINGS_MODULE` environment variable if you do this.
+
 
 
 ### Environment variables

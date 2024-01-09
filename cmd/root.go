@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -43,6 +44,7 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 
 	`,
 	Run: func(cmd *cobra.Command, args []string) {
+		// args are the arguments after the -- above
 		remoteServer := viper.GetString("REMOTE_SERVER")
 		if remoteServer == "" {
 			remoteServer = "https://app.codecomet.io/api"
@@ -53,32 +55,16 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 			connect.WithSendGzip(),
 		)
 
-		var coverProfileFile string
-		// now search through the arguments and avoid passing our needed arguments more than once
-		var jsonFound, coverProfileFound bool
-		for _, arg := range args {
-			if arg == "-json" {
-				jsonFound = true
-				continue
-			}
-			if strings.HasPrefix(arg, "-coverprofile=") {
-				coverProfileFound = true
-				coverProfileFile = strings.TrimPrefix(arg, "-coverprofile=")
-				continue
-			}
+		var coverProfileFile, testLogOutputFile string
+
+		if args[0] == "go" {
+			args, coverProfileFile = rewriteArgsForGotest(args)
+		} else if args[0] == "pytest" {
+			args, testLogOutputFile = rewriteArgsForPytest(args)
+		} else {
+			log.Fatal("You can only use go or pytest at this time.")
 		}
-		if !jsonFound {
-			args = shiftSlice(args, 2, "-json")
-		}
-		if !coverProfileFound {
-			cf, err := os.CreateTemp("", "cover")
-			if err != nil {
-				panic(err)
-			}
-			coverProfileFile = cf.Name()
-			cf.Close()
-			args = shiftSlice(args, 2, "-coverprofile="+coverProfileFile)
-		}
+
 		civars := testobs.AutodetectCI()
 
 		if SuiteName == "" {
@@ -133,17 +119,38 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 
 		isr := &traceconsumerv1.IngestCollectionRequest{
 			Run: &traceconsumerv1.TestCollectionRun{
-				SuiteName:    SuiteName,
-				SuiteRunId:   SuiteRunID,
-				CiSystem:     string(civars.System),
-				Output:       []byte(out.String()),
-				Repository:   civars.RepositoryOwner + "/" + civars.Repository,
-				Branch:       civars.Branch,
-				Status:       status,
-				CommitHash:   civars.CommitHash,
-				OutputFormat: "gotest-json",
+				SuiteName:  SuiteName,
+				SuiteRunId: SuiteRunID,
+				CiSystem:   string(civars.System),
+				Repository: civars.RepositoryOwner + "/" + civars.Repository,
+				Branch:     civars.Branch,
+				Status:     status,
+				CommitHash: civars.CommitHash,
 			},
 		}
+
+		switch args[0] {
+		case "go":
+			// go test output comes directly from stdout
+			isr.Run.Output = []byte(out.String())
+			isr.Run.OutputFormat = "gotest-json"
+
+		case "pytest":
+			var outBytes []byte
+			f, err := os.Open(testLogOutputFile)
+			if err != nil {
+				fmt.Printf("unable to read open log output file: %v\n", err)
+			} else {
+				outBytes, err = io.ReadAll(f)
+				if err != nil {
+					fmt.Printf("Unable to read log output bytes: %v\n", err)
+				}
+			}
+			isr.Run.Output = outBytes
+			isr.Run.OutputFormat = "pytest-reportlog"
+			f.Close()
+		}
+
 		var cbts []byte
 		cf, err := os.Open(coverProfileFile)
 		if err != nil {
@@ -154,6 +161,7 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 				fmt.Printf("Unable to read coverage bytes: %v\n", err)
 			}
 		}
+		cf.Close()
 		isr.Run.CoverageInfo = cbts
 		req := connect.NewRequest(isr)
 		req.Header().Add("Api-Key", viper.GetString("API_KEY"))
@@ -163,7 +171,7 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 		}
 		fmt.Printf("CodeComet returned %v\n", resp)
 	},
-	Args: cobra.MinimumNArgs(2),
+	Args: cobra.MinimumNArgs(1),
 }
 
 func Execute() {
@@ -177,4 +185,64 @@ func Execute() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func rewriteArgsForGotest(args []string) ([]string, string) {
+	var coverProfileFile string
+
+	// now search through the arguments and avoid passing our needed arguments more than once
+	var jsonFound, coverProfileFound bool
+	for _, arg := range args {
+		if arg == "-json" {
+			jsonFound = true
+			continue
+		}
+		if strings.HasPrefix(arg, "-coverprofile=") {
+			coverProfileFound = true
+			coverProfileFile = strings.TrimPrefix(arg, "-coverprofile=")
+			continue
+		}
+	}
+	if !jsonFound {
+		args = shiftSlice(args, 2, "-json")
+	}
+	if !coverProfileFound {
+		cf, err := os.CreateTemp("", "cover")
+		if err != nil {
+			panic(err)
+		}
+		coverProfileFile = cf.Name()
+		cf.Close()
+		args = shiftSlice(args, 2, "-coverprofile="+coverProfileFile)
+	}
+	return args, coverProfileFile
+}
+
+func rewriteArgsForPytest(args []string) ([]string, string) {
+	var reportLogFile string
+	var reportLogFound bool
+	for idx, arg := range args {
+
+		if strings.HasPrefix(arg, "--report-log=") {
+			reportLogFound = true
+			reportLogFile = strings.TrimPrefix(arg, "--report-log=")
+			continue
+		} else if arg == "--report-log" {
+			reportLogFound = true
+			if idx+1 > len(args)-1 {
+				panic("--report-log argument missing file")
+			}
+			reportLogFile = args[idx+1]
+		}
+	}
+	if !reportLogFound {
+		tf, err := os.CreateTemp("", "reportlog")
+		if err != nil {
+			panic(err)
+		}
+		reportLogFile = tf.Name()
+		tf.Close()
+		args = shiftSlice(args, 1, "--report-log="+reportLogFile)
+	}
+	return args, reportLogFile
 }
