@@ -60,7 +60,7 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 		if args[0] == "go" {
 			args, coverProfileFile = rewriteArgsForGotest(args)
 		} else if args[0] == "pytest" {
-			args, testLogOutputFile = rewriteArgsForPytest(args)
+			args, testLogOutputFile, coverProfileFile = rewriteArgsForPytest(args)
 		} else {
 			log.Fatal("You can only use go or pytest at this time.")
 		}
@@ -218,11 +218,10 @@ func rewriteArgsForGotest(args []string) ([]string, string) {
 	return args, coverProfileFile
 }
 
-func rewriteArgsForPytest(args []string) ([]string, string) {
-	var reportLogFile string
+func rewriteArgsForPytest(args []string) ([]string, string, string) {
+	var reportLogFile, coverProfileFile string
 	var reportLogFound bool
 	for idx, arg := range args {
-
 		if strings.HasPrefix(arg, "--report-log=") {
 			reportLogFound = true
 			reportLogFile = strings.TrimPrefix(arg, "--report-log=")
@@ -233,6 +232,10 @@ func rewriteArgsForPytest(args []string) ([]string, string) {
 				panic("--report-log argument missing file")
 			}
 			reportLogFile = args[idx+1]
+		} else if strings.HasPrefix(arg, "--cov") && !strings.HasPrefix(arg, "--cov-") {
+			panic("We currently do not support an existing --cov argument. Please remove it and we will add the supported coverage flags.")
+		} else if strings.HasPrefix(arg, "--cov-report") {
+			panic("We currently do not support an existing --cov-report argument. Please remove it and we will add the supported coverage flags.")
 		}
 	}
 	if !reportLogFound {
@@ -244,5 +247,15 @@ func rewriteArgsForPytest(args []string) ([]string, string) {
 		tf.Close()
 		args = shiftSlice(args, 1, "--report-log="+reportLogFile)
 	}
-	return args, reportLogFile
+
+	cf, err := os.CreateTemp("", "cover*.json")
+	if err != nil {
+		panic(err)
+	}
+	coverProfileFile = cf.Name()
+	cf.Close()
+	args = shiftSlice(args, 1, "--cov")
+	args = shiftSlice(args, 1, "--cov-report json:"+coverProfileFile)
+
+	return args, reportLogFile, coverProfileFile
 }
