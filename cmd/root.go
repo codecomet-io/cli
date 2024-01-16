@@ -255,7 +255,8 @@ func rewriteArgsForPytest(args []string) ([]string, string, string) {
 	coverProfileFile = cf.Name()
 	cf.Close()
 	args = shiftSlice(args, 1, "--cov")
-	args = shiftSlice(args, 1, "--cov-report json:"+coverProfileFile)
+	args = shiftSlice(args, 1, "--cov-report")
+	args = shiftSlice(args, 2, "json:"+coverProfileFile)
 
 	return args, reportLogFile, coverProfileFile
 }
