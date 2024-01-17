@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	traceconsumerv1 "github.com/codecomet-io/api-proto/gen/proto/v1"
@@ -24,6 +28,15 @@ func shiftSlice(s []string, pos int, val string) []string {
 	copy(s[pos+1:], s[pos:])
 	s[pos] = val
 	return s
+}
+
+type GoTestLine struct {
+	Time    time.Time
+	Action  string
+	Package string
+	Test    string
+	Output  string
+	Elapsed float64
 }
 
 var SuiteName string
@@ -134,6 +147,31 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 			// go test output comes directly from stdout
 			isr.Run.Output = []byte(out.String())
 			isr.Run.OutputFormat = "gotest-json"
+
+			// Don't send anything to backend if no tests were run.
+			r := bytes.NewBuffer(isr.Run.Output)
+			scanner := bufio.NewScanner(r)
+			numLines := 0
+			line := &GoTestLine{}
+			for scanner.Scan() {
+				bts := scanner.Bytes()
+				err := json.Unmarshal(bts, line)
+				if err != nil {
+					fmt.Printf("error parsing output line: %v\n", line)
+				}
+				numLines++
+				if numLines > 3 {
+					break
+				}
+			}
+			if numLines == 3 {
+				// we have exactly three lines. Check last line
+				if line.Action == "skip" {
+					// No tests ever ran. There's nothing to report.
+					fmt.Println("No tests were run for this collection.")
+					os.Exit(0)
+				}
+			}
 
 		case "pytest":
 			var outBytes []byte
