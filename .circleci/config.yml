@@ -1,0 +1,13 @@
+version: 2.1
+jobs:
+  compile:
+    docker:
+      - image: golang
+    steps:
+      - run: go build
+
+workflows:
+  version: 2
+  build_app:
+    jobs:
+      - compile
