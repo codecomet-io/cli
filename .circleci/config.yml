@@ -5,7 +5,8 @@ jobs:
       - image: golang
     steps:
       - checkout
-      - run: go build
+      - run: git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+      - run: GOPRIVATE=github.com/codecomet-io go build
 
 workflows:
   version: 2
