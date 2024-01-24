@@ -37,7 +37,8 @@ type CISystemVars struct {
 func AutodetectCI() CISystemVars {
 	vars := CISystemVars{}
 
-	if os.Getenv("GITHUB_ACTIONS") == "true" {
+	switch {
+	case os.Getenv("GITHUB_ACTIONS") == "true":
 		// https://docs.github.com/en/actions/learn-github-actions/variables
 		vars.System = GithubActions
 		repoWithOwner := os.Getenv("GITHUB_REPOSITORY")
@@ -48,8 +49,8 @@ func AutodetectCI() CISystemVars {
 		vars.CommitHash = os.Getenv("GITHUB_SHA")
 		vars.SeqBuildID = "GHA" + ":" + os.Getenv("GITHUB_RUN_NUMBER") + ":" +
 			os.Getenv("GITHUB_RUN_ATTEMPT")
-	}
-	if os.Getenv("CIRCLECI") == "true" {
+
+	case os.Getenv("CIRCLECI") == "true":
 		// https://circleci.com/docs/variables/
 		vars.System = CircleCI
 		vars.Branch = os.Getenv("CIRCLE_BRANCH")
@@ -57,7 +58,7 @@ func AutodetectCI() CISystemVars {
 		vars.RepositoryOwner = os.Getenv("CIRCLE_PROJECT_USERNAME")
 		vars.CommitHash = os.Getenv("CIRCLE_SHA1")
 		vars.SeqBuildID = "CCI" + ":" + os.Getenv("CIRCLE_BUILD_NUM")
-	} else {
+	default:
 		vars.System = CINotDetected
 		// attempt to figure out variables from environment
 		vars.Branch = os.Getenv("CODECOMET_BRANCH")
