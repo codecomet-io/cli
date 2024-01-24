@@ -8,6 +8,7 @@ def build(c):
 
     for os, nickname, arch, executable in [
         ("linux", "linux-x86_64", "amd64", "codecomet"),
+        ("windows", "win64", "amd64", "codecomet.exe"),
     ]:
         c.run(
             f"""GOOS={os} GOARCH={arch} CGO_ENABLED=0 go build -ldflags="-w -s" -o {executable}"""
