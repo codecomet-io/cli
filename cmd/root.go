@@ -42,6 +42,25 @@ type GoTestLine struct {
 var SuiteName string
 var SuiteRunID string
 
+func populateSuiteNameAndRunID(civars testobs.CISystemVars) {
+	if SuiteName == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			fmt.Printf("wd: unable to set suitename: %v\n", err)
+		}
+		homedir, err := os.UserHomeDir()
+		if err != nil {
+			fmt.Printf("homedir: unable to set suitename: %v\n", err)
+		}
+		SuiteName = strings.TrimPrefix(wd, homedir)
+	}
+	if SuiteRunID == "" {
+		SuiteRunID = civars.SeqBuildID
+	}
+
+	fmt.Println("SuiteName:", SuiteName, "RunID", SuiteRunID)
+}
+
 var rootCmd = &cobra.Command{
 	Use:   "codecomet",
 	Short: "The CodeComet CLI collects metrics about your tests and uploads them to the CodeComet web app.",
@@ -79,23 +98,8 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 		}
 
 		civars := testobs.AutodetectCI()
+		populateSuiteNameAndRunID(civars)
 
-		if SuiteName == "" {
-			wd, err := os.Getwd()
-			if err != nil {
-				fmt.Printf("wd: unable to set suitename: %v\n", err)
-			}
-			homedir, err := os.UserHomeDir()
-			if err != nil {
-				fmt.Printf("homedir: unable to set suitename: %v\n", err)
-			}
-			SuiteName = strings.TrimPrefix(wd, homedir)
-		}
-		if SuiteRunID == "" {
-			SuiteRunID = civars.SeqBuildID
-		}
-
-		fmt.Println("SuiteName:", SuiteName, "RunID", SuiteRunID)
 		fmt.Println("CodeComet: Running command: ", args)
 
 		testcmd := exec.Command(args[0], args[1:]...)
