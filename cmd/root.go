@@ -40,7 +40,7 @@ type GoTestLine struct {
 }
 
 var SuiteName string
-var SuiteRunID string
+var BuildTag string
 
 func populateSuiteNameAndRunID(civars testobs.CISystemVars) {
 	if SuiteName == "" {
@@ -54,11 +54,11 @@ func populateSuiteNameAndRunID(civars testobs.CISystemVars) {
 		}
 		SuiteName = strings.TrimPrefix(wd, homedir)
 	}
-	if SuiteRunID == "" {
-		SuiteRunID = civars.SeqBuildID
+	if BuildTag == "" {
+		BuildTag = civars.SeqBuildID
 	}
 
-	fmt.Println("SuiteName:", SuiteName, "RunID", SuiteRunID)
+	fmt.Println("SuiteName:", SuiteName, "BuildTag:", BuildTag)
 }
 
 var rootCmd = &cobra.Command{
@@ -129,15 +129,15 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 		}
 
 		success := runErr == nil
-		status := "pass"
+		status := traceconsumerv1.TestSuiteRunStatus_TEST_SUITE_RUN_STATUS_PASS
 		if !success {
-			status = "fail"
+			status = traceconsumerv1.TestSuiteRunStatus_TEST_SUITE_RUN_STATUS_FAIL
 		}
 
-		isr := &traceconsumerv1.IngestCollectionRequest{
-			Run: &traceconsumerv1.TestCollectionRun{
+		isr := &traceconsumerv1.IngestSuiteRequest{
+			Run: &traceconsumerv1.TestSuiteRun{
 				SuiteName:  SuiteName,
-				SuiteRunId: SuiteRunID,
+				BuildTag:   BuildTag,
 				CiSystem:   string(civars.System),
 				Repository: civars.RepositoryOwner + "/" + civars.Repository,
 				Branch:     civars.Branch,
@@ -207,7 +207,7 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 		isr.Run.CoverageInfo = cbts
 		req := connect.NewRequest(isr)
 		req.Header().Add("Api-Key", viper.GetString("API_KEY"))
-		resp, err := client.IngestTestCollectionRun(context.Background(), req)
+		resp, err := client.IngestTestSuiteRun(context.Background(), req)
 		if err != nil {
 			fmt.Printf("Call to CodeComet failed: %v\n", err)
 		}
@@ -218,7 +218,7 @@ codecomet -s MyBackendTests -- go test -json -coverprofile=cover.out ./...
 
 func Execute() {
 	rootCmd.PersistentFlags().StringVarP(&SuiteName, "suite", "s", "", "Provide a name for this test suite. Use the same test suite name for test runs you want to group together.")
-	rootCmd.PersistentFlags().StringVarP(&SuiteRunID, "runid", "r", "", "Provide a run ID. Defaults to your CI system's run ID, if any.")
+	rootCmd.PersistentFlags().StringVarP(&BuildTag, "buildtag", "b", "", "Provide a build tag. Defaults to your CI system's build ID, if any.")
 
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("CODECOMET")

@@ -3,8 +3,13 @@ package testobs
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/go-git/go-git/v5"
 )
 
 func randSeq(n int) string {
@@ -33,6 +38,94 @@ type CISystemVars struct {
 	SeqBuildID      string
 }
 
+// findGitRepo searches for a .git directory starting from the current directory and moving up.
+func findGitRepo(path string) (string, error) {
+	for {
+		_, err := os.Stat(filepath.Join(path, ".git"))
+		if err == nil {
+			return path, nil
+		}
+		if !os.IsNotExist(err) {
+			// Some other error occurred
+			return "", err
+		}
+
+		parent := filepath.Dir(path)
+		if parent == path {
+			// No .git directory found
+			return "", fmt.Errorf(".git directory not found")
+		}
+		path = parent
+	}
+}
+
+// extractRepoOwnerAndName attempts to parse the repository owner and name from the remote URL.
+func extractRepoOwnerAndName(remoteUrl string) (string, string) {
+	// Remove the protocol (https://, git://, ssh://, etc.) and optional user credentials
+	if at := strings.Index(remoteUrl, "@"); at != -1 {
+		remoteUrl = remoteUrl[at+1:]
+	} else if start := strings.Index(remoteUrl, "://"); start != -1 {
+		remoteUrl = remoteUrl[start+3:]
+	}
+
+	// Remove anything before a colon, which might be part of SSH URL or port number
+	if colon := strings.LastIndex(remoteUrl, ":"); colon != -1 {
+		remoteUrl = remoteUrl[colon+1:]
+	}
+
+	// Remove '.git' suffix and split by '/'
+	remoteUrl = strings.TrimSuffix(remoteUrl, ".git")
+	parts := strings.Split(remoteUrl, "/")
+	if len(parts) >= 2 {
+		owner := parts[len(parts)-2]
+		repoName := parts[len(parts)-1]
+		return owner, repoName
+	}
+
+	return "", ""
+}
+
+// getRepoDetails retrieves the owner and repo name from the remote URL, current branch, and latest commit hash.
+func getRepoDetails() (string, string, string, string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", "", "", "", err
+	}
+
+	repoPath, err := findGitRepo(cwd)
+	if err != nil {
+		return "", "", "", "", err
+	}
+
+	repo, err := git.PlainOpen(repoPath)
+	if err != nil {
+		return "", "", "", "", err
+	}
+
+	remotes, err := repo.Remotes()
+	if err != nil {
+		return "", "", "", "", err
+	}
+
+	var owner, repoName string
+	if len(remotes) > 0 {
+		remoteUrl := remotes[0].Config().URLs[0]
+		owner, repoName = extractRepoOwnerAndName(remoteUrl)
+	} else {
+		repoName = filepath.Base(repoPath)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		return "", "", "", "", err
+	}
+
+	branch := strings.TrimPrefix(head.Name().String(), "refs/heads/")
+	commit := head.Hash().String()
+
+	return owner, repoName, branch, commit, nil
+}
+
 // Automatically detect some CI environments
 func AutodetectCI() CISystemVars {
 	vars := CISystemVars{}
@@ -59,18 +152,36 @@ func AutodetectCI() CISystemVars {
 		vars.CommitHash = os.Getenv("CIRCLE_SHA1")
 		vars.SeqBuildID = "CCI" + ":" + os.Getenv("CIRCLE_BUILD_NUM")
 	default:
-		vars.System = CINotDetected
+		return detectFromGit()
+	}
+
+	return vars
+}
+
+func detectFromGit() CISystemVars {
+	vars := CISystemVars{}
+	vars.System = CINotDetected
+
+	repoOwner, repoName, branch, commit, err := getRepoDetails()
+	if err != nil {
+		fmt.Printf("Error detecting git repo: %v\nWill use environment variables.\n", err)
+
 		// attempt to figure out variables from environment
 		vars.Branch = os.Getenv("CODECOMET_BRANCH")
 		vars.Repository = os.Getenv("CODECOMET_REPOSITORY")
 		vars.RepositoryOwner = os.Getenv("CODECOMET_REPOSITORY_OWNER")
 		vars.CommitHash = os.Getenv("CODECOMET_COMMIT_HASH")
-		vars.SeqBuildID = os.Getenv("CODECOMET_SEQ_BUILD_ID")
-		if vars.SeqBuildID == "" {
-			// last fall-back
-			vars.SeqBuildID = randSeq(8)
-		}
+	} else {
+		vars.Branch = branch
+		vars.Repository = repoName
+		vars.RepositoryOwner = repoOwner
+		vars.CommitHash = commit
 	}
 
+	vars.SeqBuildID = os.Getenv("CODECOMET_SEQ_BUILD_ID")
+	if vars.SeqBuildID == "" {
+		// last fall-back
+		vars.SeqBuildID = time.Now().Format("060102-150405")
+	}
 	return vars
 }

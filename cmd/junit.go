@@ -56,10 +56,10 @@ var junitCmd = &cobra.Command{
 			return
 		}
 
-		isr := &traceconsumerv1.IngestCollectionRequest{
-			Run: &traceconsumerv1.TestCollectionRun{
+		isr := &traceconsumerv1.IngestSuiteRequest{
+			Run: &traceconsumerv1.TestSuiteRun{
 				SuiteName:    SuiteName,
-				SuiteRunId:   SuiteRunID,
+				BuildTag:     BuildTag,
 				CiSystem:     string(civars.System),
 				Repository:   civars.RepositoryOwner + "/" + civars.Repository,
 				Branch:       civars.Branch,
@@ -84,7 +84,7 @@ var junitCmd = &cobra.Command{
 		isr.Run.CoverageInfo = cbts
 		req := connect.NewRequest(isr)
 		req.Header().Add("Api-Key", viper.GetString("API_KEY"))
-		resp, err := client.IngestTestCollectionRun(context.Background(), req)
+		resp, err := client.IngestTestSuiteRun(context.Background(), req)
 		if err != nil {
 			fmt.Printf("Call to CodeComet failed: %v\n", err)
 		}
